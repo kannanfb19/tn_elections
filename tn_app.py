@@ -84,8 +84,7 @@ if prompt_input := st.chat_input("Ex: PERAMBUR votes counts for all participants
             raw_text = raw_llm_output.text.strip()
             
             # The string cleaning line is now fixed and perfectly structured
-            raw_text = raw_text.replace("```sql", "").replace("
-```", "").strip()
+            raw_text = raw_text.replace("```sql", "").replace("```", "").strip()
             
             if "SELECT" in raw_text:
                 cleaned_sql = raw_text[raw_text.find("SELECT"):]
