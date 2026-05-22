@@ -1,28 +1,31 @@
 import streamlit as st
-import sqlite3
 import google.generativeai as genai
 import pandas as pd
+import snowflake.connector  # ✅ FIXED: Added missing import
 
 # ==========================================
 # 1. AI ENGINE AUTHORIZATION SETUP
 # ==========================================
-# Replace with your actual key from Google AI Studio
-GEMINI_API_KEY = "AIzaSyC7_RuEV_Bdd-TskiS-iRCHcQrnOzLdBuA" 
+# ✅ FIXED: Secured API key using st.secrets so it won't get blocked on GitHub
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] 
 genai.configure(api_key=GEMINI_API_KEY)
 
-## ==========================================
+# ✅ FIXED: Added the missing model instantiation to solve the NameError
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+# ==========================================
 # 2. CLOUD DATABASE EXECUTION ROUTER
 # ==========================================
-# 🌟 CHANGE: Completely replaced the local SQLite router with this Snowflake router!
 def execute_database_query(sql_script):
     try:
+        # ✅ FIXED: Cleaned up the secrets routing keys correctly
         conn = snowflake.connector.connect(
             user=st.secrets["snowflake"]["user"],
-            password=st.secrets["snowflake"]["Thanksuniverse@123"],
-            account=st.secrets["snowflake"]["MIOCYXM-BD44077"],
-            warehouse=st.secrets["snowflake"]["COMPUTE_WH"],
-            database=st.secrets["snowflake"]["TN_ELECTIONS"],
-            schema=st.secrets["snowflake"]["public"]
+            password=st.secrets["snowflake"]["password"],
+            account=st.secrets["snowflake"]["account"],
+            warehouse=st.secrets["snowflake"]["warehouse"],
+            database=st.secrets["snowflake"]["database"],
+            schema=st.secrets["snowflake"]["schema"]
         )
         cursor = conn.cursor()
         cursor.execute(sql_script)
@@ -38,7 +41,7 @@ def execute_database_query(sql_script):
 # ==========================================
 SYSTEM_CONTEXT = """
 You are an expert SQL translation agent for a Tamil Nadu Election Dataset (State S22, May 2026).
-Your sole job is to read the user's natural language question and output ONLY a valid, executable SQLite query based on these tables:
+Your sole job is to read the user's natural language question and output ONLY a valid, executable Snowflake SQL query based on these tables:
 
 1. Table: constituencies_enriched
    Columns: constituency_id, state_code, ac_no, constituency_code, constituency_name, state_name, district_id, district_no, district_name, male_electors, female_electors, third_gender_electors, total_electors, current_round, total_rounds, round_progress, status_text, total_evm_votes, total_postal_votes, total_votes, turnout_percent, candidate_count, leader_candidate_id, leader_candidate, leader_party_id, leader_party, leader_party_abbreviation, leader_status, leader_votes, leader_vote_share_percent, runner_up_candidate_id, runner_up_candidate, runner_up_party_id, runner_up_party, runner_up_party_abbreviation, runner_up_status, runner_up_votes, runner_up_vote_share_percent, third_candidate_id, third_candidate, third_party_id, third_party, third_party_abbreviation, third_votes, third_vote_share_percent, margin, runner_up_margin, nota_candidate_id, nota_votes, nota_share_percent, official_status, official_margin, official_leading_candidate, official_leading_party, official_trailing_candidate, official_trailing_party
@@ -65,44 +68,36 @@ st.set_page_config(page_title="TN Election AI Analyst", layout="wide")
 st.title("🗳️ Tamil Nadu Election AI Analytics Chatbot")
 st.caption("Query election metrics, candidate statuses, rankings, and structural counts naturally.")
 
-# Manage state-based memory cache for conversational interface
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# Display previous chat logs
 for message in st.session_state.chat_history:
     with st.chat_message(message["identity"]):
         st.markdown(message["text"])
         if "data_view" in message:
             st.dataframe(message["data_view"])
 
-# Capture user query
 if prompt_input := st.chat_input("Ex: PERAMBUR votes counts for all participants?"):
     with st.chat_message("user"):
         st.markdown(prompt_input)
     st.session_state.chat_history.append({"identity": "user", "text": prompt_input})
     
     with st.chat_message("assistant"):
-        # 1. Send request to Gemini
         with st.spinner("AI is compiling structural query logic..."):
             raw_llm_output = model.generate_content(f"{SYSTEM_CONTEXT}\n\nUser Question: {prompt_input}")
             raw_text = raw_llm_output.text.strip()
             
-            # 🌟 STAGE 2: ADVANCED TEXT CLEANING GUARDRAILS
-            # Clean out any common markdown structures if the AI provides them
-            raw_text = raw_text.replace("```sql", "").replace("```", "").strip()
+            raw_text = raw_text.replace("```sql", "").replace("
+```", "").strip()
             
-            # Find exactly where 'SELECT' starts to strip typos or prefixes like 'ite'
             if "SELECT" in raw_text:
                 cleaned_sql = raw_text[raw_text.find("SELECT"):]
             else:
                 cleaned_sql = raw_text
 
-        # Display the execution logic to the user
         st.markdown("**Generated Execution Instructions:**")
         st.code(cleaned_sql, language="sql")
         
-        # 3. Local Engine Database Query Execution
         with st.spinner("Computing database indices..."):
             cols, rows = execute_database_query(cleaned_sql)
             
